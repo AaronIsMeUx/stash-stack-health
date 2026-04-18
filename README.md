@@ -9,7 +9,7 @@ At a glance:
 
 Click the indicator for a live status breakdown and quick-launch links for each service.
 
-![Stash Stack Health menubar screenshot](screenshot.png)
+![Stash Stack Health menubar screenshot](screenshot.jpg)
 
 ---
 
