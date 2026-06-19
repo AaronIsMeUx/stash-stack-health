@@ -19,6 +19,7 @@ CONFIG_FILE="$HOME/.config/stash-stack-health/config.sh"
 
 # --- Defaults (override any of these in your config.sh) ---
 CHECK_STASH="${CHECK_STASH:-true}"
+CHECK_STASHARR="${CHECK_STASHARR:-true}"
 CHECK_WHISPARR="${CHECK_WHISPARR:-true}"
 CHECK_PROWLARR="${CHECK_PROWLARR:-true}"
 CHECK_FLARESOLVERR="${CHECK_FLARESOLVERR:-true}"
@@ -27,6 +28,7 @@ CHECK_DOCKER="${CHECK_DOCKER:-true}"
 CHECK_MEDIA_DRIVE="${CHECK_MEDIA_DRIVE:-false}"
 
 STASH_PORT="${STASH_PORT:-9999}"
+STASHARR_PORT="${STASHARR_PORT:-3000}"
 WHISPARR_PORT="${WHISPARR_PORT:-6969}"
 PROWLARR_PORT="${PROWLARR_PORT:-9696}"
 FLARESOLVERR_PORT="${FLARESOLVERR_PORT:-8191}"
@@ -57,6 +59,7 @@ check_drive() {
 results=()
 
 [ "$CHECK_STASH"        = "true" ] && { check_http "http://localhost:${STASH_PORT}"        && results+=("Stash|up")        || results+=("Stash|down"); }
+[ "$CHECK_STASHARR"     = "true" ] && { check_http "http://localhost:${STASHARR_PORT}"      && results+=("Stasharr|up")     || results+=("Stasharr|down"); }
 [ "$CHECK_WHISPARR"     = "true" ] && { check_http "http://localhost:${WHISPARR_PORT}/ping" && results+=("Whisparr|up")     || results+=("Whisparr|down"); }
 [ "$CHECK_PROWLARR"     = "true" ] && { check_http "http://localhost:${PROWLARR_PORT}/ping" && results+=("Prowlarr|up")     || results+=("Prowlarr|down"); }
 [ "$CHECK_FLARESOLVERR" = "true" ] && { check_http "http://localhost:${FLARESOLVERR_PORT}/health" && results+=("FlareSolverr|up") || results+=("FlareSolverr|down"); }
@@ -93,6 +96,7 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
   if [ "$OPEN_SHORTCUTS" = "true" ]; then
     echo "Quick Shortcuts | color=blue"
     [ "$CHECK_STASH"    = "true" ] && echo "--Open Stash | href=http://localhost:${STASH_PORT}"
+    [ "$CHECK_STASHARR" = "true" ] && echo "--Open Stasharr | href=http://localhost:${STASHARR_PORT}/login"
     [ -n "$STASHDB_URL" ]          && echo "--Open StashDB | href=${STASHDB_URL}"
     [ "$CHECK_WHISPARR" = "true" ] && echo "--Open Whisparr | href=http://localhost:${WHISPARR_PORT}"
     [ "$CHECK_PROWLARR" = "true" ] && echo "--Open Prowlarr | href=http://localhost:${PROWLARR_PORT}"
@@ -101,6 +105,7 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
   fi
 
   [ "$CHECK_STASH"    = "true" ] && echo "Open Stash | href=http://localhost:${STASH_PORT}"
+  [ "$CHECK_STASHARR" = "true" ] && echo "Open Stasharr | href=http://localhost:${STASHARR_PORT}/login"
   [ -n "$STASHDB_URL" ]          && echo "Open StashDB | href=${STASHDB_URL}"
   [ "$CHECK_WHISPARR" = "true" ] && echo "Open Whisparr | href=http://localhost:${WHISPARR_PORT}"
   [ "$CHECK_PROWLARR" = "true" ] && echo "Open Prowlarr | href=http://localhost:${PROWLARR_PORT}"

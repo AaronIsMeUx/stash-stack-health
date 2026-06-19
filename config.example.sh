@@ -3,6 +3,7 @@
 
 # --- Enable or disable each service check (true/false) ---
 CHECK_STASH=true
+CHECK_STASHARR=true
 CHECK_WHISPARR=true
 CHECK_PROWLARR=true
 CHECK_FLARESOLVERR=true
@@ -15,6 +16,7 @@ MEDIA_DRIVE_PATH="/Volumes/YOUR_DRIVE_NAME"
 
 # --- Ports (change if your services run on non-default ports) ---
 STASH_PORT=9999
+STASHARR_PORT=3000
 WHISPARR_PORT=6969
 PROWLARR_PORT=9696
 FLARESOLVERR_PORT=8191
