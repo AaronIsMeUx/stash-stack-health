@@ -83,6 +83,9 @@ QBITTORRENT_PORT=8080
 
 # Hide StashDB link from dropdown
 STASHDB_URL=""
+
+# Show a Quick Shortcuts submenu at the top of the dropdown
+OPEN_SHORTCUTS=true
 ```
 
 ---

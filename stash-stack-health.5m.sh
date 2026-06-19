@@ -35,6 +35,7 @@ QBITTORRENT_PORT="${QBITTORRENT_PORT:-8080}"
 MEDIA_DRIVE_PATH="${MEDIA_DRIVE_PATH:-}"
 
 STASHDB_URL="${STASHDB_URL:-https://stashdb.org}"
+OPEN_SHORTCUTS="${OPEN_SHORTCUTS:-true}"
 
 STATE_FILE="/tmp/stash-stack-health-status.txt"
 MODE="${1:-human}"
@@ -88,6 +89,17 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
   done
   echo "---"
   echo "Refresh | refresh=true"
+
+  if [ "$OPEN_SHORTCUTS" = "true" ]; then
+    echo "Quick Shortcuts | color=blue"
+    [ "$CHECK_STASH"    = "true" ] && echo "--Open Stash | href=http://localhost:${STASH_PORT}"
+    [ -n "$STASHDB_URL" ]          && echo "--Open StashDB | href=${STASHDB_URL}"
+    [ "$CHECK_WHISPARR" = "true" ] && echo "--Open Whisparr | href=http://localhost:${WHISPARR_PORT}"
+    [ "$CHECK_PROWLARR" = "true" ] && echo "--Open Prowlarr | href=http://localhost:${PROWLARR_PORT}"
+    [ "$CHECK_QBITTORRENT" = "true" ] && echo "--Open qBittorrent | href=http://localhost:${QBITTORRENT_PORT}"
+    echo "---"
+  fi
+
   [ "$CHECK_STASH"    = "true" ] && echo "Open Stash | href=http://localhost:${STASH_PORT}"
   [ -n "$STASHDB_URL" ]          && echo "Open StashDB | href=${STASHDB_URL}"
   [ "$CHECK_WHISPARR" = "true" ] && echo "Open Whisparr | href=http://localhost:${WHISPARR_PORT}"

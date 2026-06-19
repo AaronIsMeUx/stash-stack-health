@@ -23,3 +23,6 @@ QBITTORRENT_PORT=8080
 # --- Links shown in the SwiftBar dropdown ---
 # Set to empty string "" to hide a link
 STASHDB_URL="https://stashdb.org"
+
+# Show a dedicated shortcut submenu in the menu bar dropdown
+OPEN_SHORTCUTS=true
