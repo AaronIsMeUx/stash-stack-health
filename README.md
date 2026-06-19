@@ -18,7 +18,7 @@ Click the indicator for a live status breakdown and quick-launch links for each 
 | Service | Default port | Notes |
 |---|---|---|
 | [Stash](https://stashapp.cc) | 9999 | Native Mac app or Docker |
-| [Stasharr](https://github.com/enymawse/stasharr) | 3000 | Stash ↔ Whisparr companion |
+| [Stasharr](https://github.com/enymawse/stasharr-portal) | 3000 | Stash ↔ Whisparr companion |
 | [Whisparr](https://github.com/Whisparr/Whisparr) | 6969 | Adult content Arr |
 | [Prowlarr](https://github.com/Prowlarr/Prowlarr) | 9696 | Indexer manager |
 | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) | 8191 | Cloudflare bypass |
