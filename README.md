@@ -23,6 +23,8 @@ Click the indicator for a live status breakdown and quick-launch links for each 
 | [Prowlarr](https://github.com/Prowlarr/Prowlarr) | 9696 | Indexer manager |
 | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) | 8191 | Cloudflare bypass |
 | [qBittorrent](https://www.qbittorrent.org) | 8080 | Download client |
+| [Homarr](https://homarr.dev) | 7575 | Homelab dashboard / start page (Docker) |
+| [Glances](https://nicolargo.github.io/glances/) | 61208 | System monitor (CPU/RAM/disk) — native, web mode |
 | Docker daemon | — | Required for containerized services |
 | Media drive | — | Optional: monitors an external drive mount |
 

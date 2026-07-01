@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # <xbar.title>Stash Stack Health</xbar.title>
-# <xbar.version>v1.0.0</xbar.version>
+# <xbar.version>v1.3.0</xbar.version>
 # <xbar.author>AaronIsMeUx</xbar.author>
 # <xbar.author.github>AaronIsMeUx</xbar.author.github>
-# <xbar.desc>Menubar health monitor for a Mac-hosted Stash + Arr media automation stack. Checks Stash, Whisparr, Prowlarr, FlareSolverr, qBittorrent, Docker, and your media drive. Fully configurable.</xbar.desc>
+# <xbar.desc>Menubar health monitor for a Mac-hosted Stash + Arr media automation stack. Checks Stash, Stashy (remote access), Whisparr, Prowlarr, FlareSolverr, qBittorrent, Homarr, Glances, Docker, and your media drive. Fully configurable.</xbar.desc>
 # <xbar.dependencies>bash,curl,docker</xbar.dependencies>
 # <xbar.abouturl>https://github.com/AaronIsMeUx/stash-stack-health</xbar.abouturl>
 # <swiftbar.hideAbout>false</swiftbar.hideAbout>
@@ -19,11 +19,14 @@ CONFIG_FILE="$HOME/.config/stash-stack-health/config.sh"
 
 # --- Defaults (override any of these in your config.sh) ---
 CHECK_STASH="${CHECK_STASH:-true}"
+CHECK_STASHY="${CHECK_STASHY:-true}"
 CHECK_STASHARR="${CHECK_STASHARR:-true}"
 CHECK_WHISPARR="${CHECK_WHISPARR:-true}"
 CHECK_PROWLARR="${CHECK_PROWLARR:-true}"
 CHECK_FLARESOLVERR="${CHECK_FLARESOLVERR:-true}"
 CHECK_QBITTORRENT="${CHECK_QBITTORRENT:-true}"
+CHECK_HOMARR="${CHECK_HOMARR:-true}"
+CHECK_GLANCES="${CHECK_GLANCES:-true}"
 CHECK_DOCKER="${CHECK_DOCKER:-true}"
 CHECK_MEDIA_DRIVE="${CHECK_MEDIA_DRIVE:-false}"
 
@@ -33,8 +36,15 @@ WHISPARR_PORT="${WHISPARR_PORT:-6969}"
 PROWLARR_PORT="${PROWLARR_PORT:-9696}"
 FLARESOLVERR_PORT="${FLARESOLVERR_PORT:-8191}"
 QBITTORRENT_PORT="${QBITTORRENT_PORT:-8080}"
+HOMARR_PORT="${HOMARR_PORT:-7575}"
+GLANCES_PORT="${GLANCES_PORT:-61208}"
 
 MEDIA_DRIVE_PATH="${MEDIA_DRIVE_PATH:-}"
+
+# Stashy (iPhone app) reachability: verifies Stash answers OFF localhost (i.e. the
+# phone can actually connect). Set to your Mac's LAN IP (home WiFi) or Tailscale IP
+# (remote). Uses STASH_PORT. This catches Stash being bound to 127.0.0.1 only.
+STASHY_HOST="${STASHY_HOST:-192.168.68.62}"
 
 STASHDB_URL="${STASHDB_URL:-https://stashdb.org}"
 OPEN_SHORTCUTS="${OPEN_SHORTCUTS:-true}"
@@ -59,11 +69,14 @@ check_drive() {
 results=()
 
 [ "$CHECK_STASH"        = "true" ] && { check_http "http://localhost:${STASH_PORT}"        && results+=("Stash|up")        || results+=("Stash|down"); }
+[ "$CHECK_STASHY"       = "true" ] && { check_http "http://${STASHY_HOST}:${STASH_PORT}"    && results+=("Stashy (remote)|up") || results+=("Stashy (remote)|down"); }
 [ "$CHECK_STASHARR"     = "true" ] && { check_http "http://localhost:${STASHARR_PORT}"      && results+=("Stasharr|up")     || results+=("Stasharr|down"); }
 [ "$CHECK_WHISPARR"     = "true" ] && { check_http "http://localhost:${WHISPARR_PORT}/ping" && results+=("Whisparr|up")     || results+=("Whisparr|down"); }
 [ "$CHECK_PROWLARR"     = "true" ] && { check_http "http://localhost:${PROWLARR_PORT}/ping" && results+=("Prowlarr|up")     || results+=("Prowlarr|down"); }
 [ "$CHECK_FLARESOLVERR" = "true" ] && { check_http "http://localhost:${FLARESOLVERR_PORT}/health" && results+=("FlareSolverr|up") || results+=("FlareSolverr|down"); }
 [ "$CHECK_QBITTORRENT"  = "true" ] && { check_http "http://localhost:${QBITTORRENT_PORT}"  && results+=("qBittorrent|up")  || results+=("qBittorrent|down"); }
+[ "$CHECK_HOMARR"       = "true" ] && { check_http "http://localhost:${HOMARR_PORT}"        && results+=("Homarr|up")       || results+=("Homarr|down"); }
+[ "$CHECK_GLANCES"      = "true" ] && { check_http "http://localhost:${GLANCES_PORT}"       && results+=("Glances|up")      || results+=("Glances|down"); }
 [ "$CHECK_DOCKER"       = "true" ] && { check_docker                                        && results+=("Docker|up")       || results+=("Docker|down"); }
 [ "$CHECK_MEDIA_DRIVE"  = "true" ] && { check_drive                                         && results+=("Media drive|up")  || results+=("Media drive|down"); }
 
@@ -101,6 +114,8 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
     [ "$CHECK_WHISPARR" = "true" ] && echo "--Open Whisparr | href=http://localhost:${WHISPARR_PORT}"
     [ "$CHECK_PROWLARR" = "true" ] && echo "--Open Prowlarr | href=http://localhost:${PROWLARR_PORT}"
     [ "$CHECK_QBITTORRENT" = "true" ] && echo "--Open qBittorrent | href=http://localhost:${QBITTORRENT_PORT}"
+    [ "$CHECK_HOMARR" = "true" ] && echo "--Open Homarr | href=http://localhost:${HOMARR_PORT}"
+    [ "$CHECK_GLANCES" = "true" ] && echo "--Open Glances | href=http://localhost:${GLANCES_PORT}"
     echo "---"
   fi
 
@@ -110,8 +125,10 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
   [ "$CHECK_WHISPARR" = "true" ] && echo "Open Whisparr | href=http://localhost:${WHISPARR_PORT}"
   [ "$CHECK_PROWLARR" = "true" ] && echo "Open Prowlarr | href=http://localhost:${PROWLARR_PORT}"
   [ "$CHECK_QBITTORRENT" = "true" ] && echo "Open qBittorrent | href=http://localhost:${QBITTORRENT_PORT}"
+  [ "$CHECK_HOMARR" = "true" ] && echo "Open Homarr | href=http://localhost:${HOMARR_PORT}"
+  [ "$CHECK_GLANCES" = "true" ] && echo "Open Glances | href=http://localhost:${GLANCES_PORT}"
   echo "---"
-  echo "Stash Stack Health v1.0.0 | color=gray size=11"
+  echo "Stash Stack Health v1.3.0 | color=gray size=11"
 
   current="$overall|$down_count"
   prev=""
