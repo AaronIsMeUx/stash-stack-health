@@ -1,2 +1,7 @@
 .DS_Store
 .claude/
+
+# Real config — contains API keys / credentials. Never commit.
+# The tracked template is config.example.sh
+config.sh
+config.local.sh
