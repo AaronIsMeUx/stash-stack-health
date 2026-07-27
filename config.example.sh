@@ -7,6 +7,7 @@ CHECK_STASHY=true
 CHECK_STASHARR=true
 CHECK_WHISPARR=true
 CHECK_PROWLARR=true
+CHECK_PROWLARR_INDEXERS=true
 CHECK_FLARESOLVERR=true
 CHECK_QBITTORRENT=true
 CHECK_HOMARR=true
@@ -31,6 +32,15 @@ FLARESOLVERR_PORT=8191
 QBITTORRENT_PORT=8080
 HOMARR_PORT=7575
 GLANCES_PORT=61208
+
+# --- Prowlarr indexer health ---
+# CHECK_PROWLARR above only pings Prowlarr's port. That can answer perfectly while
+# every indexer is failing (expired tracker cookie), so search dies silently while
+# the light stays green. CHECK_PROWLARR_INDEXERS asks Prowlarr's health API whether
+# any indexers are actually unavailable, and names them in the dropdown.
+# Leave the key empty to auto-read it from the Docker container named below.
+PROWLARR_API_KEY=""
+PROWLARR_CONTAINER="prowlarr"
 
 # --- Links shown in the SwiftBar dropdown ---
 # Set to empty string "" to hide a link
