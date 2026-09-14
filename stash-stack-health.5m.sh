@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # <xbar.title>Stash Stack Health</xbar.title>
-# <xbar.version>v1.5.0</xbar.version>
+# <xbar.version>v1.7.0</xbar.version>
 # <xbar.author>AaronIsMeUx</xbar.author>
 # <xbar.author.github>AaronIsMeUx</xbar.author.github>
-# <xbar.desc>Menubar health monitor for a Mac-hosted Stash + Arr media automation stack. Checks Stash, Stashy (remote access), Whisparr, Prowlarr, Prowlarr indexer auth/health, FlareSolverr, qBittorrent, Homarr, Glances, Docker, your media drive, and Time Machine backup freshness. Fully configurable.</xbar.desc>
+# <xbar.desc>Menubar health monitor for a Mac-hosted Stash + Arr media automation stack. Checks Stash, Stashy (remote access), Whisparr, Radarr, Jellyfin, Prowlarr, Prowlarr indexer auth/health, FlareSolverr, qBittorrent, Homarr, Glances, Docker, your media drive, and Time Machine backup freshness. Fully configurable.</xbar.desc>
 # <xbar.dependencies>bash,curl,docker</xbar.dependencies>
 # <xbar.abouturl>https://github.com/AaronIsMeUx/stash-stack-health</xbar.abouturl>
 # <swiftbar.hideAbout>false</swiftbar.hideAbout>
@@ -12,6 +12,7 @@
 # <swiftbar.hideDisablePlugin>true</swiftbar.hideDisablePlugin>
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+HOMARR_LAUNCHER="${HOMARR_LAUNCHER:-$HOME/projects/homarr-launcher/homarr-launcher.10s.sh}"
 
 # --- Load user config (copy config.example.sh to ~/.config/stash-stack-health/config.sh) ---
 CONFIG_FILE="$HOME/.config/stash-stack-health/config.sh"
@@ -22,6 +23,8 @@ CHECK_STASH="${CHECK_STASH:-true}"
 CHECK_STASHY="${CHECK_STASHY:-true}"
 CHECK_STASHARR="${CHECK_STASHARR:-true}"
 CHECK_WHISPARR="${CHECK_WHISPARR:-true}"
+CHECK_RADARR="${CHECK_RADARR:-true}"
+CHECK_JELLYFIN="${CHECK_JELLYFIN:-true}"
 CHECK_PROWLARR="${CHECK_PROWLARR:-true}"
 CHECK_PROWLARR_INDEXERS="${CHECK_PROWLARR_INDEXERS:-true}"
 CHECK_FLARESOLVERR="${CHECK_FLARESOLVERR:-true}"
@@ -31,10 +34,18 @@ CHECK_GLANCES="${CHECK_GLANCES:-true}"
 CHECK_DOCKER="${CHECK_DOCKER:-true}"
 CHECK_MEDIA_DRIVE="${CHECK_MEDIA_DRIVE:-false}"
 CHECK_TIMEMACHINE="${CHECK_TIMEMACHINE:-true}"
+# Optional extras - default OFF so a fresh clone never reports a service you do not run.
+CHECK_QUI="${CHECK_QUI:-false}"
+CHECK_SEEDBOX="${CHECK_SEEDBOX:-false}"
+CHECK_JOBS="${CHECK_JOBS:-false}"
 
 STASH_PORT="${STASH_PORT:-9999}"
 STASHARR_PORT="${STASHARR_PORT:-3000}"
 WHISPARR_PORT="${WHISPARR_PORT:-6969}"
+RADARR_PORT="${RADARR_PORT:-7878}"
+JELLYFIN_PORT="${JELLYFIN_PORT:-8096}"
+QUI_PORT="${QUI_PORT:-7476}"
+SEEDBOX_PORT="${SEEDBOX_PORT:-29963}"
 PROWLARR_PORT="${PROWLARR_PORT:-9696}"
 FLARESOLVERR_PORT="${FLARESOLVERR_PORT:-8191}"
 QBITTORRENT_PORT="${QBITTORRENT_PORT:-8080}"
@@ -60,7 +71,7 @@ PROWLARR_CONTAINER="${PROWLARR_CONTAINER:-prowlarr}"
 # Stashy (iPhone app) reachability: verifies Stash answers OFF localhost (i.e. the
 # phone can actually connect). Set to your Mac's LAN IP (home WiFi) or Tailscale IP
 # (remote). Uses STASH_PORT. This catches Stash being bound to 127.0.0.1 only.
-STASHY_HOST="${STASHY_HOST:-192.168.68.62}"
+STASHY_HOST="${STASHY_HOST:-192.168.1.50}"
 
 STASHDB_URL="${STASHDB_URL:-https://stashdb.org}"
 OPEN_SHORTCUTS="${OPEN_SHORTCUTS:-true}"
@@ -156,6 +167,51 @@ check_prowlarr_indexers() {
   return 0
 }
 
+# --- Long-running supervised jobs ---
+JOBS_DETAIL=""
+# Aaron 2026-08-28: long jobs kept dying unattended and he only found out by asking.
+# Surfaces a dead or stalled job in the menu bar in real time. Needs no credentials.
+check_jobs() {
+  local jr out bad run
+  jr="${JOBRUNNER_PATH:-$HOME/Claude Projects/tools/jobrunner/jobrunner.py}"
+  [ -f "$jr" ] || { JOBS_DETAIL="jobrunner not installed"; return 2; }
+  out=$(/usr/bin/python3 "$jr" list 2>/dev/null) || { JOBS_DETAIL="jobrunner error"; return 2; }
+  if [ -z "$out" ] || [ "$out" = "no jobs registered" ]; then
+    JOBS_DETAIL="none registered"; return 0
+  fi
+  bad=$(printf "%s\n" "$out" | awk 'NR>1 && ($3=="failed" || ($3=="running" && $NF=="no"))' | wc -l | tr -d ' ')
+  run=$(printf "%s\n" "$out" | awk 'NR>1 && $3=="running" && $NF=="yes"' | wc -l | tr -d ' ')
+  if [ "${bad:-0}" -gt 0 ]; then JOBS_DETAIL="${bad} job(s) NOT running"; return 1; fi
+  JOBS_DETAIL="${run} running"
+  return 0
+}
+
+# --- Seedbox qBittorrent, reached over a persistent SSH tunnel ---
+# Proves the whole chain in one check: tunnel up, credentials valid, client responding.
+# A bare port check is not enough - the tunnel can be up while qBittorrent is dead,
+# and qBittorrent answers 403 to an unauthenticated request, which looks like failure.
+SEEDBOX_DETAIL=""
+check_seedbox() {
+  local ck code n
+  ck=$(mktemp) || return 2
+  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 -c "$ck" \
+         -H "Referer: http://localhost:${SEEDBOX_PORT}" \
+         --data-urlencode "username=${SEEDBOX_USER}" \
+         --data-urlencode "password=${SEEDBOX_PASS}" \
+         "http://localhost:${SEEDBOX_PORT}/api/v2/auth/login" 2>/dev/null || echo "000")
+  if [ "$code" != "200" ] && [ "$code" != "204" ]; then
+    rm -f "$ck"
+    if [ "$code" = "000" ]; then SEEDBOX_DETAIL="SSH tunnel down"
+    else SEEDBOX_DETAIL="auth failed (HTTP $code)"; fi
+    return 1
+  fi
+  n=$(curl -s --max-time 15 -b "$ck" "http://localhost:${SEEDBOX_PORT}/api/v2/torrents/info" 2>/dev/null \
+      | grep -o '"hash"' | wc -l | tr -d ' ')
+  rm -f "$ck"
+  SEEDBOX_DETAIL="${n} torrents"
+  return 0
+}
+
 # --- Run enabled checks ---
 results=()
 
@@ -163,6 +219,8 @@ results=()
 [ "$CHECK_STASHY"       = "true" ] && { check_http "http://${STASHY_HOST}:${STASH_PORT}"    && results+=("Stashy (remote)|up") || results+=("Stashy (remote)|down"); }
 [ "$CHECK_STASHARR"     = "true" ] && { check_http "http://localhost:${STASHARR_PORT}"      && results+=("Stasharr|up")     || results+=("Stasharr|down"); }
 [ "$CHECK_WHISPARR"     = "true" ] && { check_http "http://localhost:${WHISPARR_PORT}/ping" && results+=("Whisparr|up")     || results+=("Whisparr|down"); }
+[ "$CHECK_RADARR"       = "true" ] && { check_http "http://localhost:${RADARR_PORT}/ping"   && results+=("Radarr|up")       || results+=("Radarr|down"); }
+[ "$CHECK_JELLYFIN"     = "true" ] && { check_http "http://localhost:${JELLYFIN_PORT}/System/Info/Public" && results+=("Jellyfin|up") || results+=("Jellyfin|down"); }
 [ "$CHECK_PROWLARR"     = "true" ] && { check_http "http://localhost:${PROWLARR_PORT}/ping" && results+=("Prowlarr|up")     || results+=("Prowlarr|down"); }
 if [ "$CHECK_PROWLARR_INDEXERS" = "true" ]; then
   check_prowlarr_indexers; rc=$?
@@ -178,6 +236,23 @@ fi
 [ "$CHECK_GLANCES"      = "true" ] && { check_http "http://localhost:${GLANCES_PORT}"       && results+=("Glances|up")      || results+=("Glances|down"); }
 [ "$CHECK_DOCKER"       = "true" ] && { check_docker                                        && results+=("Docker|up")       || results+=("Docker|down"); }
 [ "$CHECK_MEDIA_DRIVE"  = "true" ] && { check_drive                                         && results+=("Media drive|up")  || results+=("Media drive|down"); }
+[ "$CHECK_QUI"          = "true" ] && { check_http "http://localhost:${QUI_PORT}"           && results+=("qui|up")          || results+=("qui|down"); }
+if [ "$CHECK_JOBS" = "true" ]; then
+    check_jobs; rc=$?
+    case $rc in
+      0) results+=("Long jobs|up") ;;
+      1) results+=("Long jobs|down") ;;
+      *) results+=("Long jobs|unknown") ;;
+    esac
+  fi
+  if [ "$CHECK_SEEDBOX" = "true" ]; then
+  check_seedbox; rc=$?
+  case $rc in
+    0) results+=("Seedbox|up") ;;
+    1) results+=("Seedbox|down") ;;
+    *) results+=("Seedbox|unknown") ;;
+  esac
+fi
 if [ "$CHECK_TIMEMACHINE" = "true" ]; then
   check_timemachine; rc=$?
   case $rc in
@@ -223,6 +298,12 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
       echo "--Fix: refresh the tracker cookie in Prowlarr | href=http://localhost:${PROWLARR_PORT}/settings/indexers size=11"
     fi
     # Always show how fresh the last backup is; add a fix hint when it's stale.
+    if [ "$name" = "Long jobs" ] && [ -n "$JOBS_DETAIL" ]; then
+      echo "--$JOBS_DETAIL | color=gray size=11"
+    fi
+    if [ "$name" = "Seedbox" ] && [ -n "$SEEDBOX_DETAIL" ]; then
+      echo "--$SEEDBOX_DETAIL | color=gray size=11"
+    fi
     if [ "$name" = "Time Machine" ] && [ -n "$TM_DETAIL" ]; then
       echo "--$TM_DETAIL | color=gray size=11"
       [ "$status" != "up" ] && echo "--Fix: reconnect the backup drive, then run a backup | size=11"
@@ -237,9 +318,20 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
     [ "$CHECK_STASHARR" = "true" ] && echo "--Open Stasharr | href=http://localhost:${STASHARR_PORT}/login"
     [ -n "$STASHDB_URL" ]          && echo "--Open StashDB | href=${STASHDB_URL}"
     [ "$CHECK_WHISPARR" = "true" ] && echo "--Open Whisparr | href=http://localhost:${WHISPARR_PORT}"
+    [ "$CHECK_RADARR"   = "true" ] && echo "--Open Radarr | href=http://localhost:${RADARR_PORT}"
+    [ "$CHECK_JELLYFIN" = "true" ] && echo "--Open Jellyfin | href=http://localhost:${JELLYFIN_PORT}"
     [ "$CHECK_PROWLARR" = "true" ] && echo "--Open Prowlarr | href=http://localhost:${PROWLARR_PORT}"
     [ "$CHECK_QBITTORRENT" = "true" ] && echo "--Open qBittorrent | href=http://localhost:${QBITTORRENT_PORT}"
+    [ "$CHECK_QUI"      = "true" ] && echo "--Open qui | href=http://localhost:${QUI_PORT}"
+    [ "$CHECK_SEEDBOX"  = "true" ] && echo "--Open Seedbox | href=http://localhost:${SEEDBOX_PORT}"
     [ "$CHECK_HOMARR" = "true" ] && echo "--Open Homarr | href=http://localhost:${HOMARR_PORT}"
+    # Homarr controls, folded in from the standalone launcher plugin so there is
+    # only ONE menu bar icon. The launcher script still lives at the path below;
+    # it is just no longer a SwiftBar plugin in its own right.
+    if [ "$CHECK_HOMARR" = "true" ] && [ -x "$HOMARR_LAUNCHER" ]; then
+      echo "--Restart Homarr | bash=\"$HOMARR_LAUNCHER\" param1=restart terminal=false refresh=true"
+      echo "--Stop Homarr | bash=\"$HOMARR_LAUNCHER\" param1=stop terminal=false refresh=true"
+    fi
     [ "$CHECK_GLANCES" = "true" ] && echo "--Open Glances | href=http://localhost:${GLANCES_PORT}"
     echo "---"
   fi
@@ -248,8 +340,12 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
   [ "$CHECK_STASHARR" = "true" ] && echo "Open Stasharr | href=http://localhost:${STASHARR_PORT}/login"
   [ -n "$STASHDB_URL" ]          && echo "Open StashDB | href=${STASHDB_URL}"
   [ "$CHECK_WHISPARR" = "true" ] && echo "Open Whisparr | href=http://localhost:${WHISPARR_PORT}"
+  [ "$CHECK_RADARR"   = "true" ] && echo "Open Radarr | href=http://localhost:${RADARR_PORT}"
+  [ "$CHECK_JELLYFIN" = "true" ] && echo "Open Jellyfin | href=http://localhost:${JELLYFIN_PORT}"
   [ "$CHECK_PROWLARR" = "true" ] && echo "Open Prowlarr | href=http://localhost:${PROWLARR_PORT}"
   [ "$CHECK_QBITTORRENT" = "true" ] && echo "Open qBittorrent | href=http://localhost:${QBITTORRENT_PORT}"
+  [ "$CHECK_QUI"      = "true" ] && echo "Open qui | href=http://localhost:${QUI_PORT}"
+  [ "$CHECK_SEEDBOX"  = "true" ] && echo "Open Seedbox | href=http://localhost:${SEEDBOX_PORT}"
   [ "$CHECK_HOMARR" = "true" ] && echo "Open Homarr | href=http://localhost:${HOMARR_PORT}"
   [ "$CHECK_GLANCES" = "true" ] && echo "Open Glances | href=http://localhost:${GLANCES_PORT}"
   echo "---"
@@ -280,6 +376,12 @@ else
     esac
     if [ "$name" = "Prowlarr indexers" ] && [ -n "$INDEXER_DETAIL" ] && [ "$status" != "up" ]; then
       printf "                   \033[90m%s\033[0m\n" "$INDEXER_DETAIL"
+    fi
+    if [ "$name" = "Long jobs" ] && [ -n "$JOBS_DETAIL" ]; then
+      printf "                   \033[90m%s\033[0m\n" "$JOBS_DETAIL"
+    fi
+    if [ "$name" = "Seedbox" ] && [ -n "$SEEDBOX_DETAIL" ]; then
+      printf "                   \033[90m%s\033[0m\n" "$SEEDBOX_DETAIL"
     fi
     if [ "$name" = "Time Machine" ] && [ -n "$TM_DETAIL" ]; then
       printf "                   \033[90m%s\033[0m\n" "$TM_DETAIL"

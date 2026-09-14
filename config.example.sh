@@ -48,3 +48,29 @@ STASHDB_URL="https://stashdb.org"
 
 # Show a dedicated shortcut submenu in the menu bar dropdown
 OPEN_SHORTCUTS=true
+
+# --- Radarr (movies) and Jellyfin (media server) -----------------------------
+CHECK_RADARR=true
+RADARR_PORT=7878
+CHECK_JELLYFIN=true
+JELLYFIN_PORT=8096
+
+# --- Optional extras --------------------------------------------------------
+# These default to FALSE in the script so a fresh install never reports a
+# service you do not run. Set to true only for the ones you actually have.
+
+# qui - alternative qBittorrent web UI
+CHECK_QUI=false
+QUI_PORT=7476
+
+# Long-running supervised jobs (github.com/... jobrunner). Flags a job that has
+# died or stalled, which is otherwise invisible until you go looking.
+CHECK_JOBS=false
+# JOBRUNNER_PATH="$HOME/tools/jobrunner/jobrunner.py"
+
+# A remote seedbox's qBittorrent, reached over a local SSH tunnel.
+# Checks the whole chain: tunnel up, credentials valid, client answering.
+CHECK_SEEDBOX=false
+SEEDBOX_PORT=29963
+SEEDBOX_USER=""
+SEEDBOX_PASS=""
