@@ -5,3 +5,10 @@
 # The tracked template is config.example.sh
 config.sh
 config.local.sh
+
+# local backups
+*.bak
+*.bak-*
+*.bak2-*
+*.bak_*
+*.prepush_*

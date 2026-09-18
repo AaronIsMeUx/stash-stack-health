@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # <xbar.title>Stash Stack Health</xbar.title>
-# <xbar.version>v1.7.0</xbar.version>
+# <xbar.version>v1.9.0</xbar.version>
 # <xbar.author>AaronIsMeUx</xbar.author>
 # <xbar.author.github>AaronIsMeUx</xbar.author.github>
-# <xbar.desc>Menubar health monitor for a Mac-hosted Stash + Arr media automation stack. Checks Stash, Stashy (remote access), Whisparr, Radarr, Jellyfin, Prowlarr, Prowlarr indexer auth/health, FlareSolverr, qBittorrent, Homarr, Glances, Docker, your media drive, and Time Machine backup freshness. Fully configurable.</xbar.desc>
+# <xbar.desc>Menubar health monitor for a Mac-hosted Stash + Arr media automation stack. Checks Stash, Stashy (remote access), Whisparr, Radarr, Sonarr, Jellyseerr, Jellyfin, Prowlarr, Prowlarr indexer auth/health, FlareSolverr, qBittorrent, Homarr, Glances, Docker, your media drive, boot disk headroom, backup drive temperature, and Time Machine backup freshness. Fully configurable.</xbar.desc>
 # <xbar.dependencies>bash,curl,docker</xbar.dependencies>
 # <xbar.abouturl>https://github.com/AaronIsMeUx/stash-stack-health</xbar.abouturl>
 # <swiftbar.hideAbout>false</swiftbar.hideAbout>
@@ -24,6 +24,10 @@ CHECK_STASHY="${CHECK_STASHY:-true}"
 CHECK_STASHARR="${CHECK_STASHARR:-true}"
 CHECK_WHISPARR="${CHECK_WHISPARR:-true}"
 CHECK_RADARR="${CHECK_RADARR:-true}"
+CHECK_SONARR="${CHECK_SONARR:-true}"
+CHECK_JELLYSEERR="${CHECK_JELLYSEERR:-true}"
+CHECK_BOOT_DISK="${CHECK_BOOT_DISK:-true}"
+CHECK_DRIVE_TEMP="${CHECK_DRIVE_TEMP:-true}"
 CHECK_JELLYFIN="${CHECK_JELLYFIN:-true}"
 CHECK_PROWLARR="${CHECK_PROWLARR:-true}"
 CHECK_PROWLARR_INDEXERS="${CHECK_PROWLARR_INDEXERS:-true}"
@@ -43,6 +47,19 @@ STASH_PORT="${STASH_PORT:-9999}"
 STASHARR_PORT="${STASHARR_PORT:-3000}"
 WHISPARR_PORT="${WHISPARR_PORT:-6969}"
 RADARR_PORT="${RADARR_PORT:-7878}"
+SONARR_PORT="${SONARR_PORT:-8989}"
+JELLYSEERR_PORT="${JELLYSEERR_PORT:-5055}"
+# boot disk: warn below this many GB free. macOS keeps its swap file here,
+# so running it to zero can stall or halt the machine.
+BOOT_DISK_MIN_GB="${BOOT_DISK_MIN_GB:-60}"
+# Backup drive temperature ceiling. Enterprise drives are commonly rated
+# 10-40 C recommended / 60 C absolute, but many USB enclosures run them
+# hotter than that, so 45 C is a practical amber line rather than 40.
+DRIVE_TEMP_WARN_C="${DRIVE_TEMP_WARN_C:-45}"
+SMARTCTL_BIN="${SMARTCTL_BIN:-/opt/homebrew/bin/smartctl}"
+# Which devices to read. Matched against `smartctl --scan` output, so set this
+# to whatever your USB/Thunderbolt enclosure calls itself.
+DRIVE_TEMP_MATCH="${DRIVE_TEMP_MATCH:-acasis}"
 JELLYFIN_PORT="${JELLYFIN_PORT:-8096}"
 QUI_PORT="${QUI_PORT:-7476}"
 SEEDBOX_PORT="${SEEDBOX_PORT:-29963}"
@@ -80,6 +97,39 @@ STATE_FILE="/tmp/stash-stack-health-status.txt"
 MODE="${1:-human}"
 
 # --- Check functions ---
+# --- boot disk headroom -------------------------------------------------
+# Returns free GB on the data volume. macOS swap lives here; if it fills,
+# the machine halts. Cheap to check, so it runs every cycle.
+boot_disk_free_gb() {
+  df -g /System/Volumes/Data 2>/dev/null | awk 'NR==2{print $4}'
+}
+
+# --- backup drive temperature -------------------------------------------
+# WHY ONCE AN HOUR: many USB bridges report "CHECK POWER MODE not implemented",
+# which means smartctl cannot check whether a drive is parked without waking
+# it. At a 5 minute cadence that would add ~12 spin-ups an hour. Cached hourly.
+# Silent when the enclosure is powered off - that is normal, not a fault.
+drive_temp_max_c() {
+  local cache="$HOME/.config/claude-jobs/drive-temp.cache"
+  mkdir -p "$(dirname "$cache")"
+  if [ -f "$cache" ]; then
+    local age=$(( $(date +%s) - $(stat -f %m "$cache" 2>/dev/null || echo 0) ))
+    [ "$age" -lt 3600 ] && { cat "$cache"; return 0; }
+  fi
+  [ -x "$SMARTCTL_BIN" ] || { echo ""; return 0; }
+  local devs hottest=""
+  devs=$("$SMARTCTL_BIN" --scan 2>/dev/null | grep -i "$DRIVE_TEMP_MATCH" | sed 's/ -d ata.*//')
+  [ -z "$devs" ] && { echo "" > "$cache"; echo ""; return 0; }
+  while IFS= read -r d; do
+    [ -z "$d" ] && continue
+    local t
+    t=$("$SMARTCTL_BIN" -d ata -A "$d" 2>/dev/null | awk '/Temperature_Celsius/{print $10; exit}')
+    [ -n "$t" ] && { [ -z "$hottest" ] && hottest="$t" || { [ "$t" -gt "$hottest" ] && hottest="$t"; }; }
+  done <<< "$devs"
+  echo "$hottest" > "$cache"
+  echo "$hottest"
+}
+
 check_http() {
   local code
   code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$1" 2>/dev/null || echo "000")
@@ -220,6 +270,9 @@ results=()
 [ "$CHECK_STASHARR"     = "true" ] && { check_http "http://localhost:${STASHARR_PORT}"      && results+=("Stasharr|up")     || results+=("Stasharr|down"); }
 [ "$CHECK_WHISPARR"     = "true" ] && { check_http "http://localhost:${WHISPARR_PORT}/ping" && results+=("Whisparr|up")     || results+=("Whisparr|down"); }
 [ "$CHECK_RADARR"       = "true" ] && { check_http "http://localhost:${RADARR_PORT}/ping"   && results+=("Radarr|up")       || results+=("Radarr|down"); }
+[ "$CHECK_SONARR"       = "true" ] && { check_http "http://localhost:${SONARR_PORT}/ping"   && results+=("Sonarr|up")       || results+=("Sonarr|down"); }
+# Jellyseerr redirects / to the setup or login page, so probe the API instead
+[ "$CHECK_JELLYSEERR"   = "true" ] && { check_http "http://localhost:${JELLYSEERR_PORT}/api/v1/status" && results+=("Jellyseerr|up") || results+=("Jellyseerr|down"); }
 [ "$CHECK_JELLYFIN"     = "true" ] && { check_http "http://localhost:${JELLYFIN_PORT}/System/Info/Public" && results+=("Jellyfin|up") || results+=("Jellyfin|down"); }
 [ "$CHECK_PROWLARR"     = "true" ] && { check_http "http://localhost:${PROWLARR_PORT}/ping" && results+=("Prowlarr|up")     || results+=("Prowlarr|down"); }
 if [ "$CHECK_PROWLARR_INDEXERS" = "true" ]; then
@@ -236,6 +289,28 @@ fi
 [ "$CHECK_GLANCES"      = "true" ] && { check_http "http://localhost:${GLANCES_PORT}"       && results+=("Glances|up")      || results+=("Glances|down"); }
 [ "$CHECK_DOCKER"       = "true" ] && { check_docker                                        && results+=("Docker|up")       || results+=("Docker|down"); }
 [ "$CHECK_MEDIA_DRIVE"  = "true" ] && { check_drive                                         && results+=("Media drive|up")  || results+=("Media drive|down"); }
+BOOTDISK_DETAIL=""
+if [ "$CHECK_BOOT_DISK" = "true" ]; then
+  _bd=$(boot_disk_free_gb)
+  if [ -z "$_bd" ]; then
+    BOOTDISK_DETAIL="could not read"; results+=("Boot disk|unknown")
+  elif [ "$_bd" -lt "$BOOT_DISK_MIN_GB" ]; then
+    BOOTDISK_DETAIL="${_bd} GB free - macOS swap lives here"; results+=("Boot disk|down")
+  else
+    BOOTDISK_DETAIL="${_bd} GB free"; results+=("Boot disk|up")
+  fi
+fi
+DRIVETEMP_DETAIL=""
+if [ "$CHECK_DRIVE_TEMP" = "true" ]; then
+  _dt=$(drive_temp_max_c)
+  if [ -z "$_dt" ]; then
+    :   # enclosure powered off, or smartctl missing - not a fault, stay silent
+  elif [ "$_dt" -ge "$DRIVE_TEMP_WARN_C" ]; then
+    DRIVETEMP_DETAIL="${_dt} C - above ${DRIVE_TEMP_WARN_C} C, check the fan"; results+=("Backup drives|down")
+  else
+    DRIVETEMP_DETAIL="hottest ${_dt} C"; results+=("Backup drives|up")
+  fi
+fi
 [ "$CHECK_QUI"          = "true" ] && { check_http "http://localhost:${QUI_PORT}"           && results+=("qui|up")          || results+=("qui|down"); }
 if [ "$CHECK_JOBS" = "true" ]; then
     check_jobs; rc=$?
@@ -298,6 +373,12 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
       echo "--Fix: refresh the tracker cookie in Prowlarr | href=http://localhost:${PROWLARR_PORT}/settings/indexers size=11"
     fi
     # Always show how fresh the last backup is; add a fix hint when it's stale.
+    if [ "$name" = "Boot disk" ] && [ -n "$BOOTDISK_DETAIL" ]; then
+      echo "--$BOOTDISK_DETAIL | color=gray size=11"
+    fi
+    if [ "$name" = "Backup drives" ] && [ -n "$DRIVETEMP_DETAIL" ]; then
+      echo "--$DRIVETEMP_DETAIL | color=gray size=11"
+    fi
     if [ "$name" = "Long jobs" ] && [ -n "$JOBS_DETAIL" ]; then
       echo "--$JOBS_DETAIL | color=gray size=11"
     fi
@@ -319,6 +400,8 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
     [ -n "$STASHDB_URL" ]          && echo "--Open StashDB | href=${STASHDB_URL}"
     [ "$CHECK_WHISPARR" = "true" ] && echo "--Open Whisparr | href=http://localhost:${WHISPARR_PORT}"
     [ "$CHECK_RADARR"   = "true" ] && echo "--Open Radarr | href=http://localhost:${RADARR_PORT}"
+    [ "$CHECK_SONARR"   = "true" ] && echo "--Open Sonarr | href=http://localhost:${SONARR_PORT}"
+    [ "$CHECK_JELLYSEERR" = "true" ] && echo "--Open Jellyseerr | href=http://localhost:${JELLYSEERR_PORT}"
     [ "$CHECK_JELLYFIN" = "true" ] && echo "--Open Jellyfin | href=http://localhost:${JELLYFIN_PORT}"
     [ "$CHECK_PROWLARR" = "true" ] && echo "--Open Prowlarr | href=http://localhost:${PROWLARR_PORT}"
     [ "$CHECK_QBITTORRENT" = "true" ] && echo "--Open qBittorrent | href=http://localhost:${QBITTORRENT_PORT}"
@@ -340,6 +423,8 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
   [ "$CHECK_STASHARR" = "true" ] && echo "Open Stasharr | href=http://localhost:${STASHARR_PORT}/login"
   [ -n "$STASHDB_URL" ]          && echo "Open StashDB | href=${STASHDB_URL}"
   [ "$CHECK_WHISPARR" = "true" ] && echo "Open Whisparr | href=http://localhost:${WHISPARR_PORT}"
+  [ "$CHECK_SONARR"   = "true" ] && echo "Open Sonarr | href=http://localhost:${SONARR_PORT}"
+  [ "$CHECK_JELLYSEERR" = "true" ] && echo "Open Jellyseerr | href=http://localhost:${JELLYSEERR_PORT}"
   [ "$CHECK_RADARR"   = "true" ] && echo "Open Radarr | href=http://localhost:${RADARR_PORT}"
   [ "$CHECK_JELLYFIN" = "true" ] && echo "Open Jellyfin | href=http://localhost:${JELLYFIN_PORT}"
   [ "$CHECK_PROWLARR" = "true" ] && echo "Open Prowlarr | href=http://localhost:${PROWLARR_PORT}"
@@ -376,6 +461,12 @@ else
     esac
     if [ "$name" = "Prowlarr indexers" ] && [ -n "$INDEXER_DETAIL" ] && [ "$status" != "up" ]; then
       printf "                   \033[90m%s\033[0m\n" "$INDEXER_DETAIL"
+    fi
+    if [ "$name" = "Boot disk" ] && [ -n "$BOOTDISK_DETAIL" ]; then
+      printf "                   \033[90m%s\033[0m\n" "$BOOTDISK_DETAIL"
+    fi
+    if [ "$name" = "Backup drives" ] && [ -n "$DRIVETEMP_DETAIL" ]; then
+      printf "                   \033[90m%s\033[0m\n" "$DRIVETEMP_DETAIL"
     fi
     if [ "$name" = "Long jobs" ] && [ -n "$JOBS_DETAIL" ]; then
       printf "                   \033[90m%s\033[0m\n" "$JOBS_DETAIL"
