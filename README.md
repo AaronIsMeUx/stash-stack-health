@@ -28,6 +28,30 @@ Click the indicator for a live status breakdown and quick-launch links for each 
 | Docker daemon | — | Required for containerized services |
 | Media drive | — | Optional: monitors an external drive mount |
 
+### Functional checks (v1.10.0)
+
+A service can answer its port while having quietly stopped working. These checks look at what it is actually doing:
+
+| Check | Default | Turns yellow/red when |
+|---|---|---|
+| qBit network | on | qBittorrent is not connected, has no DHT nodes, or its torrent port is not listening (10-minute startup grace) |
+| Open-files limit | on | the macOS `maxfiles` limit is below 65536, or qBittorrent is using 80%+ of it |
+| Trackers | on | 10%+ (yellow) or 25%+ (red) of active torrents have not announced to any tracker |
+| Stuck downloads | on | a download has made zero progress for 60+ minutes (names the first five) |
+| Gateway | off | a URL you set (reverse proxy, etc.) does not return a 2xx/3xx/401 |
+| Stash plugin patch | off | a plugin file you patched no longer contains your marker text |
+| Seedbox space | off | free space on your seedbox plan falls under `SEEDBOX_MIN_FREE_GB` |
+
+Keep `extra-checks.sh` in the same folder as the plugin (or in `~/projects/stash-stack-health/`). Settings are in `config.example.sh`.
+
+**Raising the open-files limit.** macOS allows each app 256 open files by default. A torrent client with a few hundred torrents hits that and stops announcing and connecting, while its web UI still looks fine. To raise it until the next restart:
+
+```bash
+sudo launchctl limit maxfiles 65536 524288
+```
+
+To make it permanent, create `/Library/LaunchDaemons/limit.maxfiles.plist` that runs `launchctl limit maxfiles 65536 524288` at load (`RunAtLoad` true), then restart qBittorrent.
+
 All services are individually toggleable. Runs any combination — Radarr, Sonarr, Transmission, etc. can replace any of the defaults via `config.sh`.
 
 ---

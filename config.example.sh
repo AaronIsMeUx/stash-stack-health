@@ -74,3 +74,33 @@ CHECK_SEEDBOX=false
 SEEDBOX_PORT=29963
 SEEDBOX_USER=""
 SEEDBOX_PASS=""
+
+# --- Functional checks (v1.10.0, in extra-checks.sh) -------------------------
+# These catch failures where a service still answers its port but has stopped
+# doing its job. Keep extra-checks.sh next to the plugin script.
+
+# qBittorrent: ON by default.
+CHECK_QBIT_NET=true        # connected to the network, DHT nodes, torrent port listening
+CHECK_QBIT_FDS=true        # macOS open-files limit is high enough (default 256 is not)
+CHECK_QBIT_TRACKERS=true   # share of active torrents that have announced to a tracker
+CHECK_QBIT_STUCK=true      # downloads with zero progress after STUCK_MINUTES
+MAXFILES_MIN=65536
+STUCK_MINUTES=60
+
+# Setup-specific: OFF by default. Enable only the ones that apply to you.
+
+# A gateway or reverse proxy that must answer (one can be running yet serve nothing).
+CHECK_CABLE_GATEWAY=false
+CABLE_GATEWAY_URL=""                     # e.g. "http://192.168.1.50:8443/"
+CABLE_GATEWAY_FIX="restart the proxy"    # hint shown in the dropdown when it fails
+
+# A Stash plugin you patched by hand. Turns red if an update overwrote your patch.
+CHECK_STASH_PLUGIN_PATCH=false
+STASH_PLUGIN_FILE=""                     # full path to the patched .js/.py file
+STASH_PLUGIN_MARKER=""                   # text that only exists in your patched version
+
+# Seedbox free space, computed from torrent sizes (needs the CHECK_SEEDBOX settings above).
+CHECK_SEEDBOX_SPACE=false
+SEEDBOX_PLAN_TB=""                       # your plan's storage in TB, e.g. 4
+SEEDBOX_MIN_FREE_GB=150                  # warn below this; red below 50 GB
+SEEDBOX_RETENTION_LOG=""                 # optional: log of a cleanup job; "DEAD WEIGHT EXHAUSTED" in it is flagged

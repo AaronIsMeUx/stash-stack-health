@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # <xbar.title>Stash Stack Health</xbar.title>
-# <xbar.version>v1.9.0</xbar.version>
+# <xbar.version>v1.10.0</xbar.version>
 # <xbar.author>AaronIsMeUx</xbar.author>
 # <xbar.author.github>AaronIsMeUx</xbar.author.github>
-# <xbar.desc>Menubar health monitor for a Mac-hosted Stash + Arr media automation stack. Checks Stash, Stashy (remote access), Whisparr, Radarr, Sonarr, Jellyseerr, Jellyfin, Prowlarr, Prowlarr indexer auth/health, FlareSolverr, qBittorrent, Homarr, Glances, Docker, your media drive, boot disk headroom, backup drive temperature, and Time Machine backup freshness. Fully configurable.</xbar.desc>
+# <xbar.desc>Menubar health monitor for a Mac-hosted Stash + Arr media automation stack. Checks Stash, Stashy (remote access), Whisparr, Radarr, Sonarr, Jellyseerr, Jellyfin, Prowlarr, Prowlarr indexer auth/health, FlareSolverr, qBittorrent (plus whether it is really connected, announcing, within its open-files limit, and not stuck), Homarr, Glances, Docker, your media drive, boot disk headroom, backup drive temperature, and Time Machine backup freshness. Fully configurable.</xbar.desc>
 # <xbar.dependencies>bash,curl,docker</xbar.dependencies>
 # <xbar.abouturl>https://github.com/AaronIsMeUx/stash-stack-health</xbar.abouturl>
 # <swiftbar.hideAbout>false</swiftbar.hideAbout>
@@ -63,6 +63,10 @@ DRIVE_TEMP_MATCH="${DRIVE_TEMP_MATCH:-acasis}"
 JELLYFIN_PORT="${JELLYFIN_PORT:-8096}"
 QUI_PORT="${QUI_PORT:-7476}"
 SEEDBOX_PORT="${SEEDBOX_PORT:-29963}"
+# Whatbox control panel - the actual seedbox website, distinct from qBittorrent.
+# Empty default on purpose: this repo is PUBLIC and the slot hostname identifies
+# the account, so the real URL lives in the gitignored config.sh.
+SEEDBOX_PANEL_URL="${SEEDBOX_PANEL_URL:-}"
 PROWLARR_PORT="${PROWLARR_PORT:-9696}"
 FLARESOLVERR_PORT="${FLARESOLVERR_PORT:-8191}"
 QBITTORRENT_PORT="${QBITTORRENT_PORT:-8080}"
@@ -74,7 +78,7 @@ MEDIA_DRIVE_PATH="${MEDIA_DRIVE_PATH:-}"
 # Time Machine freshness. Reads the last-backup date from the TM preferences plist
 # (no Full Disk Access needed) and — importantly — NEVER touches the backup drive,
 # because tmutil/ls hang for minutes on a dropped destination. WARN hours = yellow,
-# MAX hours = red alarm (fires a notification). Aaron backs up daily, so >48h = flag.
+# MAX hours = red alarm (fires a notification). Daily backups assumed, so >48h = flag.
 TIMEMACHINE_WARN_HOURS="${TIMEMACHINE_WARN_HOURS:-24}"
 TIMEMACHINE_MAX_HOURS="${TIMEMACHINE_MAX_HOURS:-48}"
 
@@ -110,7 +114,7 @@ boot_disk_free_gb() {
 # it. At a 5 minute cadence that would add ~12 spin-ups an hour. Cached hourly.
 # Silent when the enclosure is powered off - that is normal, not a fault.
 drive_temp_max_c() {
-  local cache="$HOME/.config/claude-jobs/drive-temp.cache"
+  local cache="${DRIVE_TEMP_CACHE:-$HOME/.cache/stash-stack-health/drive-temp.cache}"
   mkdir -p "$(dirname "$cache")"
   if [ -f "$cache" ]; then
     local age=$(( $(date +%s) - $(stat -f %m "$cache" 2>/dev/null || echo 0) ))
@@ -219,11 +223,12 @@ check_prowlarr_indexers() {
 
 # --- Long-running supervised jobs ---
 JOBS_DETAIL=""
-# Aaron 2026-08-28: long jobs kept dying unattended and he only found out by asking.
+# Long-running jobs can die unattended and nobody notices until they go looking.
 # Surfaces a dead or stalled job in the menu bar in real time. Needs no credentials.
 check_jobs() {
   local jr out bad run
-  jr="${JOBRUNNER_PATH:-$HOME/Claude Projects/tools/jobrunner/jobrunner.py}"
+  jr="${JOBRUNNER_PATH:-}"
+  [ -n "$jr" ] || { JOBS_DETAIL="set JOBRUNNER_PATH in config.sh"; return 2; }
   [ -f "$jr" ] || { JOBS_DETAIL="jobrunner not installed"; return 2; }
   out=$(/usr/bin/python3 "$jr" list 2>/dev/null) || { JOBS_DETAIL="jobrunner error"; return 2; }
   if [ -z "$out" ] || [ "$out" = "no jobs registered" ]; then
@@ -338,6 +343,11 @@ if [ "$CHECK_TIMEMACHINE" = "true" ]; then
   esac
 fi
 
+# --- Functional checks added 4 Oct 2026 (see extra-checks.sh) ---
+_EXTRA="$(dirname "$0")/extra-checks.sh"; [ -L "$0" ] && _EXTRA="$(dirname "$(readlink "$0")")/extra-checks.sh"
+[ -f "$_EXTRA" ] || _EXTRA="$HOME/projects/stash-stack-health/extra-checks.sh"
+[ -f "$_EXTRA" ] && source "$_EXTRA"
+
 # --- Compute overall status ---
 down_count=0
 down_names=""
@@ -385,6 +395,7 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
     if [ "$name" = "Seedbox" ] && [ -n "$SEEDBOX_DETAIL" ]; then
       echo "--$SEEDBOX_DETAIL | color=gray size=11"
     fi
+    for _d in "${EXTRA_DETAILS[@]}"; do [ "${_d%%|*}" = "$name" ] && echo "--${_d#*|} | color=gray size=11"; done
     if [ "$name" = "Time Machine" ] && [ -n "$TM_DETAIL" ]; then
       echo "--$TM_DETAIL | color=gray size=11"
       [ "$status" != "up" ] && echo "--Fix: reconnect the backup drive, then run a backup | size=11"
@@ -406,7 +417,10 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
     [ "$CHECK_PROWLARR" = "true" ] && echo "--Open Prowlarr | href=http://localhost:${PROWLARR_PORT}"
     [ "$CHECK_QBITTORRENT" = "true" ] && echo "--Open qBittorrent | href=http://localhost:${QBITTORRENT_PORT}"
     [ "$CHECK_QUI"      = "true" ] && echo "--Open qui | href=http://localhost:${QUI_PORT}"
-    [ "$CHECK_SEEDBOX"  = "true" ] && echo "--Open Seedbox | href=http://localhost:${SEEDBOX_PORT}"
+    # ⚠️ localhost:29963 is the qBittorrent WebUI ON the box via the SSH tunnel.
+    #    It is NOT the Whatbox control panel. Both links are offered below.
+    [ "$CHECK_SEEDBOX"  = "true" ] && echo "--Open qBittorrent (on box) | href=http://localhost:${SEEDBOX_PORT}"
+    [ -n "$SEEDBOX_PANEL_URL" ] && echo "--Open Whatbox panel | href=${SEEDBOX_PANEL_URL}"
     [ "$CHECK_HOMARR" = "true" ] && echo "--Open Homarr | href=http://localhost:${HOMARR_PORT}"
     # Homarr controls, folded in from the standalone launcher plugin so there is
     # only ONE menu bar icon. The launcher script still lives at the path below;
@@ -430,7 +444,8 @@ if [ "$MODE" = "--swiftbar" ] || [ -n "$SWIFTBAR_VERSION" ]; then
   [ "$CHECK_PROWLARR" = "true" ] && echo "Open Prowlarr | href=http://localhost:${PROWLARR_PORT}"
   [ "$CHECK_QBITTORRENT" = "true" ] && echo "Open qBittorrent | href=http://localhost:${QBITTORRENT_PORT}"
   [ "$CHECK_QUI"      = "true" ] && echo "Open qui | href=http://localhost:${QUI_PORT}"
-  [ "$CHECK_SEEDBOX"  = "true" ] && echo "Open Seedbox | href=http://localhost:${SEEDBOX_PORT}"
+  [ "$CHECK_SEEDBOX"  = "true" ] && echo "Open qBittorrent (on box) | href=http://localhost:${SEEDBOX_PORT}"
+  [ -n "$SEEDBOX_PANEL_URL" ] && echo "Open Whatbox panel | href=${SEEDBOX_PANEL_URL}"
   [ "$CHECK_HOMARR" = "true" ] && echo "Open Homarr | href=http://localhost:${HOMARR_PORT}"
   [ "$CHECK_GLANCES" = "true" ] && echo "Open Glances | href=http://localhost:${GLANCES_PORT}"
   echo "---"
