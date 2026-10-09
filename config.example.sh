@@ -104,3 +104,9 @@ CHECK_SEEDBOX_SPACE=false
 SEEDBOX_PLAN_TB=""                       # your plan's storage in TB, e.g. 4
 SEEDBOX_MIN_FREE_GB=150                  # warn below this; red below 50 GB
 SEEDBOX_RETENTION_LOG=""                 # optional: log of a cleanup job; "DEAD WEIGHT EXHAUSTED" in it is flagged
+
+# --- Check 8: files that must stay under a size / line limit (OFF by default) ---
+# Useful for files a tool silently truncates, e.g. an AI assistant's memory index.
+CHECK_FILE_SIZES=false
+FILE_SIZE_WARN_PCT=90        # yellow at this % of the limit, red at 100%
+# FILE_SIZE_WATCH=("Label|/path/to/file|max_kb|max_lines")   # max_lines optional

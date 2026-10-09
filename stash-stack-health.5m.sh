@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # <xbar.title>Stash Stack Health</xbar.title>
-# <xbar.version>v1.10.0</xbar.version>
+# <xbar.version>v1.11.0</xbar.version>
 # <xbar.author>AaronIsMeUx</xbar.author>
 # <xbar.author.github>AaronIsMeUx</xbar.author.github>
 # <xbar.desc>Menubar health monitor for a Mac-hosted Stash + Arr media automation stack. Checks Stash, Stashy (remote access), Whisparr, Radarr, Sonarr, Jellyseerr, Jellyfin, Prowlarr, Prowlarr indexer auth/health, FlareSolverr, qBittorrent (plus whether it is really connected, announcing, within its open-files limit, and not stuck), Homarr, Glances, Docker, your media drive, boot disk headroom, backup drive temperature, and Time Machine backup freshness. Fully configurable.</xbar.desc>
@@ -470,7 +470,7 @@ else
     name="${r%|*}"; status="${r#*|}"
     case "$status" in
       up)      printf "%-18s \033[32m✓ up\033[0m\n" "$name" ;;
-      warn)    printf "%-18s \033[33m⚠ stale\033[0m\n" "$name" ;;
+      warn)    printf "%-18s \033[33m⚠ check\033[0m\n" "$name" ;;
       unknown) printf "%-18s \033[90m? unknown\033[0m\n" "$name" ;;
       *)       printf "%-18s \033[31m✗ down\033[0m\n" "$name" ;;
     esac

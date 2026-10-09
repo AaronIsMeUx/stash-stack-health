@@ -1,8 +1,8 @@
-# extra-checks.sh - sourced by stash-stack-health.5m.sh (v1.10.0).
+# extra-checks.sh - sourced by stash-stack-health.5m.sh (v1.11.0).
 # FUNCTIONAL checks for failures that look "up" to a simple ping. Each appends to results[]
 # ("Name|up/warn/down/unknown") and to EXTRA_DETAILS[] ("Name|detail line") for the menu.
 # None of them read disk SMART, so they never wake sleeping drives.
-# The four qBittorrent checks are ON by default. The three setup-specific checks (5-7) are OFF
+# The four qBittorrent checks are ON by default. The setup-specific checks (5-8) are OFF
 # until you enable and configure them in config.sh.
 CHECK_QBIT_NET="${CHECK_QBIT_NET:-true}"
 CHECK_QBIT_FDS="${CHECK_QBIT_FDS:-true}"
@@ -11,6 +11,8 @@ CHECK_QBIT_STUCK="${CHECK_QBIT_STUCK:-true}"
 CHECK_CABLE_GATEWAY="${CHECK_CABLE_GATEWAY:-false}"
 CHECK_STASH_PLUGIN_PATCH="${CHECK_STASH_PLUGIN_PATCH:-false}"
 CHECK_SEEDBOX_SPACE="${CHECK_SEEDBOX_SPACE:-false}"
+CHECK_FILE_SIZES="${CHECK_FILE_SIZES:-false}"
+FILE_SIZE_WARN_PCT="${FILE_SIZE_WARN_PCT:-90}"
 MAXFILES_MIN="${MAXFILES_MIN:-65536}"
 SEEDBOX_PLAN_TB="${SEEDBOX_PLAN_TB:-}"
 SEEDBOX_MIN_FREE_GB="${SEEDBOX_MIN_FREE_GB:-150}"
@@ -112,4 +114,26 @@ if [ "$CHECK_SEEDBOX_SPACE" = "true" ] && [ -n "${SEEDBOX_USER:-}" ] && [ -n "$S
     else results+=("Seedbox space|up"); fi
     EXTRA_DETAILS+=("Seedbox space|${_free} GB free of ${SEEDBOX_PLAN_TB} TB$_ret")
   else results+=("Seedbox space|unknown"); fi
+fi
+
+# 8. Files that must stay under a size and/or line limit - e.g. an AI assistant's memory index,
+#    which is silently cut off when it grows too long. In config.sh:
+#    FILE_SIZE_WATCH=("Label|/path/to/file|max_kb|max_lines")   (max_lines optional)
+if [ "$CHECK_FILE_SIZES" = "true" ] && declare -p FILE_SIZE_WATCH >/dev/null 2>&1; then
+  for _fw in "${FILE_SIZE_WATCH[@]}"; do
+    IFS='|' read -r _fl _fp _fk _fn <<< "$_fw"
+    [ -z "$_fl" ] && continue
+    if [ ! -f "$_fp" ]; then results+=("$_fl|unknown"); EXTRA_DETAILS+=("$_fl|file not found: $_fp"); continue; fi
+    _fb=$(stat -f%z "$_fp" 2>/dev/null || echo 0)
+    _kpct=0; [ -n "$_fk" ] && [ "$_fk" -gt 0 ] 2>/dev/null && _kpct=$(( _fb * 100 / (_fk * 1024) ))
+    _lines=$(wc -l < "$_fp" | tr -d ' '); _lpct=0
+    [ -n "$_fn" ] && [ "$_fn" -gt 0 ] 2>/dev/null && _lpct=$(( _lines * 100 / _fn ))
+    _pct=$(( _kpct > _lpct ? _kpct : _lpct ))
+    if   [ "$_pct" -ge 100 ]; then results+=("$_fl|down")
+    elif [ "$_pct" -ge "$FILE_SIZE_WARN_PCT" ]; then results+=("$_fl|warn")
+    else results+=("$_fl|up"); fi
+    _det="$((_fb/1024)) KB of ${_fk} KB"; [ -n "$_fn" ] && _det="$_det, $_lines of $_fn lines"
+    [ "$_pct" -ge "$FILE_SIZE_WARN_PCT" ] && _det="$_det - trim it before the end is cut off"
+    EXTRA_DETAILS+=("$_fl|$_det")
+  done
 fi

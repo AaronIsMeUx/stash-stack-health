@@ -41,6 +41,7 @@ A service can answer its port while having quietly stopped working. These checks
 | Gateway | off | a URL you set (reverse proxy, etc.) does not return a 2xx/3xx/401 |
 | Stash plugin patch | off | a plugin file you patched no longer contains your marker text |
 | Seedbox space | off | free space on your seedbox plan falls under `SEEDBOX_MIN_FREE_GB` |
+| File size limits (v1.11.0) | off | a file you list in `FILE_SIZE_WATCH` reaches `FILE_SIZE_WARN_PCT` (default 90%) of its size or line limit; red at 100%. For files a tool silently truncates, such as an AI assistant's memory index |
 
 Keep `extra-checks.sh` in the same folder as the plugin (or in `~/projects/stash-stack-health/`). Settings are in `config.example.sh`.
 
